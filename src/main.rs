@@ -102,7 +102,7 @@ async fn handle_request(req: Request<Body>) -> Result<Response<Body>, Infallible
     }
   };
 
-  if event.event_type == "StreamStarted" || event.event_type == "SessionStarted" {
+  if event.event_type == "StreamStarted" {
     let result = notify(event);
 
     if let Err(err) = result {
