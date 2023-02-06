@@ -57,41 +57,61 @@ async fn run_server(port: u16) {
   // And now add a graceful shutdown signal...
   let graceful = server.with_graceful_shutdown(shutdown_signal());
 
+  println!("server started");
+
   // Run this server for... forever!
   if let Err(e) = graceful.await {
     eprintln!("server error: {e}");
   }
+
+  println!("server stopped");
 }
 
 async fn handle_request(req: Request<Body>) -> Result<Response<Body>, Infallible> {
+  println!(
+    "{} {} {:?}",
+    req.method().as_str(),
+    req.uri(),
+    req.version()
+  );
   if req.method() != Method::POST {
+    println!("invalid method");
     return not_found();
   }
 
   if req.uri().path() != "/webhook" {
+    println!("invalid path");
     return not_found();
   }
 
   let body = hyper::body::to_bytes(req.into_body()).await;
   let body = match body {
     Ok(body) => body,
-    Err(err) => return server_err(format!("{err:#?}")),
+    Err(err) => {
+      println!("failed to read body\n{err:#?}");
+      return server_err(format!("{err:#?}"));
+    }
   };
 
   let event = serde_json::from_slice::<Event>(body.as_ref());
   let event = match event {
     Ok(event) => event,
-    Err(err) => return server_err(format!("{err:#?}")),
+    Err(err) => {
+      println!("failed to parse body\n{err:#?}");
+      return server_err(format!("{err:#?}"));
+    }
   };
 
   if event.event_type == "StreamStarted" || event.event_type == "SessionStarted" {
     let result = notify(event);
 
     if let Err(err) = result {
+      println!("failed to show notification\n{err:#?}");
       return server_err(format!("{err:#?}"));
     }
   }
 
+  println!("success");
   Ok(Response::new(Body::empty()))
 }
 
