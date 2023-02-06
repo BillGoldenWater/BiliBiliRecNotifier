@@ -1,14 +1,35 @@
 use std::convert::Infallible;
 use std::net::SocketAddr;
+use std::str::FromStr;
 
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Method, Request, Response, Server, StatusCode};
 use notify_rust::NotificationHandle;
 use serde::{Deserialize, Serialize};
 
+static mut ROOMID_FILTER: Option<Vec<u32>> = None;
+
 #[tokio::main]
 async fn main() {
-  let args: Args = argh::from_env();
+  let mut args: Args = argh::from_env();
+  let roomid_filter = args.roomid_filter.as_ref().map(|it| {
+    it.split(',')
+      .filter_map(|it| u32::from_str(it).ok())
+      .collect::<Vec<_>>()
+  });
+  if roomid_filter.is_some() {
+    unsafe {
+      args.roomid_filter = roomid_filter.as_ref().map(|it| {
+        it.iter()
+          .map(|it| it.to_string())
+          .collect::<Vec<_>>()
+          .join(", ")
+      });
+      ROOMID_FILTER = roomid_filter;
+    }
+  }
+
+  println!("run with {args:#?}");
   run_server(args.port).await;
 }
 
@@ -25,7 +46,7 @@ fn notify(event: Event) -> notify_rust::error::Result<NotificationHandle> {
   notify_rust::Notification::new()
     .summary("Live start")
     .body(&format!(
-      "Room {room} started live stream.\n\n{title}",
+      "Room {room} started live streaming.\n\n{title}",
       room = event.event_data.room_id,
       title = event.event_data.title
     ))
@@ -33,12 +54,15 @@ fn notify(event: Event) -> notify_rust::error::Result<NotificationHandle> {
     .show()
 }
 
-#[derive(argh::FromArgs)]
+#[derive(argh::FromArgs, Debug)]
 /// Settings
 struct Args {
   /// webhook listen port
   #[argh(option, default = "25550")]
   port: u16,
+  /// a list of roomid that need send notification split by ','
+  #[argh(option)]
+  roomid_filter: Option<String>,
 }
 
 async fn run_server(port: u16) {
@@ -103,6 +127,17 @@ async fn handle_request(req: Request<Body>) -> Result<Response<Body>, Infallible
   };
 
   if event.event_type == "StreamStarted" {
+    unsafe {
+      if ROOMID_FILTER.is_some()
+        && !ROOMID_FILTER
+          .as_ref()
+          .unwrap()
+          .contains(&(event.event_data.room_id as u32))
+      {
+        println!("{} ignored", event.event_data.room_id);
+        return Ok(Response::new(Body::empty()));
+      }
+    }
     let result = notify(event);
 
     if let Err(err) = result {
