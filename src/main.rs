@@ -44,9 +44,9 @@ fn notify(event: Event) -> notify_rust::error::Result<NotificationHandle> {
   static SOUND: &str = "Mail";
 
   notify_rust::Notification::new()
-    .summary("Live start")
+    .summary("Live started!")
     .body(&format!(
-      "Room {room} started live streaming.\n\n{title}",
+      "Room {room} is streaming.\n\n{title}",
       room = event.event_data.room_id,
       title = event.event_data.title
     ))
