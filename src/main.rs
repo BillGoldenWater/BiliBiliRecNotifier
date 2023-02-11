@@ -126,28 +126,36 @@ async fn handle_request(req: Request<Body>) -> Result<Response<Body>, Infallible
     }
   };
 
-  if event.event_type == "StreamStarted" {
-    unsafe {
-      if ROOMID_FILTER.is_some()
-        && !ROOMID_FILTER
-          .as_ref()
-          .unwrap()
-          .contains(&(event.event_data.room_id as u32))
-      {
-        println!("{} ignored", event.event_data.room_id);
-        return Ok(Response::new(Body::empty()));
+  let res = match event.event_type.as_str() {
+    "StreamStarted" => {
+      unsafe {
+        if ROOMID_FILTER.is_some()
+          && !ROOMID_FILTER
+            .as_ref()
+            .unwrap()
+            .contains(&(event.event_data.room_id as u32))
+        {
+          println!("{} ignored", event.event_data.room_id);
+          return Ok(Response::new(Body::empty()));
+        }
       }
-    }
-    let result = notify(event);
+      let result = notify(event);
 
-    if let Err(err) = result {
-      println!("failed to show notification\n{err:#?}");
-      return server_err(format!("{err:#?}"));
-    }
-  }
+      if let Err(err) = result {
+        println!("failed to show notification\n{err:#?}");
+        return server_err(format!("{err:#?}"));
+      }
 
-  println!("success");
-  Ok(Response::new(Body::empty()))
+      println!("success");
+      Response::new(Body::empty())
+    }
+    _ => {
+      println!("{} ignored", event.event_type);
+      Response::new(Body::empty())
+    }
+  };
+
+  Ok(res)
 }
 
 fn not_found() -> Result<Response<Body>, Infallible> {
